@@ -6060,7 +6060,6 @@ dependencies = [
  "uv-normalize",
  "uv-pypi-types",
  "uv-redacted",
- "uv-small-str",
  "uv-static",
  "walkdir",
 ]
@@ -6469,8 +6468,8 @@ dependencies = [
  "astral_async_zip",
  "async-compression",
  "blake2",
- "flate2",
  "blake3",
+ "flate2",
  "fs-err",
  "futures",
  "md-5",
@@ -6489,7 +6488,6 @@ dependencies = [
  "uv-static",
  "uv-warnings",
  "xz2",
- "zip",
 ]
 
 [[package]]
