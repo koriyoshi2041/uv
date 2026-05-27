@@ -48,19 +48,18 @@ use crate::commands::project::{
 };
 use crate::commands::tool::common::{
     finalize_tool_install, normalize_tool_local_requirements, refine_interpreter,
-    remove_entrypoints, tool_environment_spec, tool_receipt_lock, tool_receipt_manifest,
+    remove_entrypoints, tool_environment_spec, tool_lock, tool_lock_manifest,
 };
 use crate::commands::tool::{Target, ToolRequest};
 use crate::commands::{diagnostics, reporters::PythonDownloadReporter};
 use crate::printer::Printer;
 use crate::settings::{ResolverInstallerSettings, ResolverSettings};
 
-/// An [`Installable`] adapter for a tool receipt [`Lock`].
+/// An [`Installable`] adapter for a tool [`Lock`].
 ///
-/// Tools embed a lock in `uv-receipt.toml`, but they are not modeled as workspace or project
-/// install targets. This adapter lets tool installation reuse [`Installable::to_resolution`] to
-/// derive a [`Resolution`] from the embedded lock when checking whether an existing environment is
-/// already up-to-date.
+/// Tools store a `uv.lock`, but they are not modeled as workspace or project install targets. This
+/// adapter lets tool installation reuse [`Installable::to_resolution`] to derive a [`Resolution`]
+/// from the lock when checking whether an existing environment is already up-to-date.
 struct ToolLockInstallTarget<'lock> {
     install_path: &'lock Path,
     lock: &'lock Lock,
@@ -68,7 +67,7 @@ struct ToolLockInstallTarget<'lock> {
 }
 
 impl<'lock> ToolLockInstallTarget<'lock> {
-    /// Create a [`ToolLockInstallTarget`] for a tool environment and its embedded [`Lock`].
+    /// Create a [`ToolLockInstallTarget`] for a tool environment and its [`Lock`].
     fn new(
         install_path: &'lock Path,
         lock: &'lock Lock,
@@ -465,7 +464,7 @@ pub(crate) async fn install(
 
     // Convert to tool options.
     let options = ToolOptions::from(options);
-    let receipt_manifest = tool_receipt_manifest(
+    let lock_manifest = tool_lock_manifest(
         &requirements,
         &constraints,
         &overrides,
@@ -601,8 +600,7 @@ pub(crate) async fn install(
                         )?
                         .is_empty()
                 } else {
-                    // Force legacy receipts through the update path so they get rewritten with an
-                    // embedded lock.
+                    // Force tools without locks through the update path so a lock gets generated.
                     false
                 };
                 if already_installed {
@@ -651,7 +649,7 @@ pub(crate) async fn install(
     // This lets us confirm the environment is valid before removing an existing install. However,
     // entrypoints always contain an absolute path to the relevant Python interpreter, which would
     // be invalidated by moving the environment.
-    let (environment, receipt_lock) = if let Some(environment) = existing_environment {
+    let (environment, tool_lock) = if let Some(environment) = existing_environment {
         let update = match update_environment(
             environment.into_environment(),
             spec.clone(),
@@ -692,13 +690,13 @@ pub(crate) async fn install(
             remove_entrypoints(existing_receipt);
         }
 
-        let receipt_lock = if let Some(tool_receipt) = existing_tool_receipt.as_ref() {
+        let tool_lock = if let Some(tool_receipt) = existing_tool_receipt.as_ref() {
             let site_packages = if tool_receipt.lock().is_none() {
                 match SitePackages::from_environment(&update.environment) {
                     Ok(site_packages) => Some(site_packages),
                     Err(err) => {
                         debug!(
-                            "Failed to read tool environment site-packages while rebuilding receipt lock after update: {err}"
+                            "Failed to read tool environment site-packages while rebuilding lock after update: {err}"
                         );
                         None
                     }
@@ -730,13 +728,13 @@ pub(crate) async fn install(
             )
             .await
             {
-                Ok(resolution) => tool_receipt_lock(
+                Ok(resolution) => tool_lock(
                     &installed_tools.tool_dir(package_name),
                     &resolution,
-                    &receipt_manifest,
+                    &lock_manifest,
                 ),
                 Err(err) => {
-                    debug!("Failed to rebuild tool receipt lock after update: {err}");
+                    debug!("Failed to rebuild tool lock after update: {err}");
                     None
                 }
             }
@@ -744,7 +742,7 @@ pub(crate) async fn install(
             None
         };
 
-        (update.environment, receipt_lock)
+        (update.environment, tool_lock)
     } else {
         let spec = EnvironmentSpecification::from(spec);
 
@@ -841,10 +839,10 @@ pub(crate) async fn install(
         };
 
         let environment = installed_tools.create_environment(package_name, interpreter)?;
-        let receipt_lock = tool_receipt_lock(
+        let tool_lock = tool_lock(
             &installed_tools.tool_dir(package_name),
             &resolution,
-            &receipt_manifest,
+            &lock_manifest,
         );
         let resolution: Resolution = resolution.into();
 
@@ -876,7 +874,7 @@ pub(crate) async fn install(
             debug!("Failed to sync environment; removing `{}`", package_name);
             let _ = installed_tools.remove_environment(package_name);
         }) {
-            Ok(environment) => (environment, receipt_lock),
+            Ok(environment) => (environment, tool_lock),
             Err(ProjectError::Operation(err)) => {
                 return diagnostics::OperationDiagnostic::with_system_certs(
                     client_builder.system_certs(),
@@ -906,7 +904,7 @@ pub(crate) async fn install(
         overrides,
         excludes,
         build_constraints,
-        receipt_lock,
+        tool_lock,
         printer,
     )?;
 
