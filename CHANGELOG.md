@@ -3,6 +3,18 @@
 <!-- prettier-ignore-start -->
 
 
+## 0.11.18
+
+Released on 2026-05-29.
+
+### Enhancements
+
+- Add `uv check` to run `ty` from uv ([#19605](https://github.com/astral-sh/uv/pull/19605))
+
+### Other changes
+
+- Update Rust toolchain to 1.96 and MSRV to 1.94 ([#19600](https://github.com/astral-sh/uv/pull/19600))
+
 ## 0.11.17
 
 Released on 2026-05-28.
